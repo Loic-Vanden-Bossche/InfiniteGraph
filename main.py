@@ -1,4 +1,5 @@
 import json
+import sys
 
 import networkx as nx
 from matplotlib import pyplot as plt
@@ -155,60 +156,92 @@ def display_related_degree_graph(input_word, words_found):
             return
         visited.add(word)
         for related_word, result_word in words_found[word].items():
-            if related_word not in path and related_word not in visited:
-                new_path = path + [related_word]
-                G.add_edge(path[-1], related_word)
+            if result_word not in path and related_word not in visited:
+                new_path = path + [result_word]
+                G.add_edge(path[-1], result_word, label=related_word)
                 add_related_words(result_word, new_path, visited)
 
     # Add related words and their degrees
     add_related_words(input_word)
 
     # Calculate shortest path lengths using BFS
-    shortest_path_lengths = nx.single_source_shortest_path_length(G, input_word)
+    shortest_paths = nx.single_source_shortest_path(G, input_word)
 
     # Create a layout
-    pos = nx.spring_layout(G, k=0.3, iterations=200, seed=42)
+    # pos = {input_word: (0, 0)}  # Initialize position of target word node
+    # for node in G.nodes():
+    #     if node != input_word:
+    #         last_ancestor = shortest_paths[node][-2] if len(shortest_paths[node]) > 1 else input_word
+    #         distance = len(shortest_paths[node]) - 1  # Calculate distance from the last ancestor
+    #         last_ancestor_pos = pos.get(last_ancestor, (0, 0))  # Get position of last ancestor
+    #         if last_ancestor_pos == (0, 0):  # Check if last ancestor is at the origin
+    #             theta = 0  # Set angle to 0 if last ancestor is at the origin
+    #         else:
+    #             theta = np.angle(complex(*last_ancestor_pos))  # Angle of the last ancestor
+    #         # Calculate x and y coordinates based on angle and distance
+    #         x = np.cos(theta) * distance  # X-coordinate based on radial distance from the last ancestor
+    #         y = np.sin(theta) * distance  # Y-coordinate based on radial distance from the last ancestor
+    #         # Adjust y-coordinate to avoid overlapping nodes
+    #         y += len([n for n in pos.values() if n[0] == last_ancestor_pos[0] + x])
+    #         pos[node] = (last_ancestor_pos[0] + x, last_ancestor_pos[1] + y)
+
+    pos = nx.spring_layout(G, seed=42, k=0.3, iterations=200)
+
+    # Create a new graph for displaying only the edges in the shortest paths
+    G_shortest_paths = nx.Graph()
+    for node in G.nodes():
+        if node != input_word:
+            shortest_path = shortest_paths[node]
+            for i in range(len(shortest_path) - 1):
+                G_shortest_paths.add_edge(shortest_path[i], shortest_path[i+1])
 
     # Assign a unique color to each degree level
-    max_degree = max(shortest_path_lengths.values())
+    max_degree = max(len(path) - 1 for path in shortest_paths.values())
     cmap = plt.get_cmap('viridis', max_degree + 1)  # Create a colormap with the required number of colors
-    node_colors = {node: cmap(distance) for node, distance in shortest_path_lengths.items()}
+    node_colors = {node: cmap(len(path) - 1) for node, path in shortest_paths.items()}
 
     # Draw nodes and edges
     nx.draw_networkx_nodes(G, pos, node_size=75, node_color=[node_colors[node] for node in G.nodes()])
-    nx.draw_networkx_edges(G, pos, alpha=0.5)
+    nx.draw_networkx_edges(G_shortest_paths, pos, alpha=0.5, edge_color='b')  # Only draw edges in the shortest paths
     nx.draw_networkx_labels(G, pos, font_size=10)
-
-    # Add edge labels
-    edge_labels = nx.get_edge_attributes(G, 'label')
-    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels)
 
     # Create legend for degree levels
     handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=cmap(i), markersize=10) for i in range(max_degree + 1)]
     labels = [f'Degree {i}' for i in range(max_degree + 1)]
 
-    plt.legend(handles, labels, loc='upper right', title='Degree Level')
+    plt.legend(handles, labels, loc='upper right', bbox_to_anchor=(1.35, 1), title='Degree Level')
 
     plt.title(f"Related Words Degree Graph for '{input_word}'")
     plt.axis("off")
+    plt.gca().set_frame_on(False)  # Turn off the frame around the plot
+
+    plt.subplots_adjust(right=0.80, top=1)
+
     plt.show()
 
 
 def main():
+    # if DISPLAY is true, display the graph only
+    args = sys.argv[1:]
+
+    display = len(args) > 0 and args[0] == "display"
+
     words_found = load_word_tree()
     last_result = get_last_results(words_found)
 
-    base_words = ["Fire", "Wind", "Water", "Earth"]
+    words_res = words_found
 
-    if last_result is not None:
-        base_words = last_result
+    if not display:
+        base_words = ["Shit", "Food"]
 
-    # words_res = get_completion_for_words_recursive(base_words, words_found)
-    display_tree(words_found)
+        if last_result is not None:
+            base_words = last_result
 
-    display_related_degree_graph("Fire", words_found)
+        words_res = get_completion_for_words_recursive(base_words, words_found)
+        save_word_tree(words_res)
 
-    save_word_tree(words_found)
+    display_tree(words_res)
+    display_related_degree_graph("Shit", words_res)
 
 
 if __name__ == "__main__":
